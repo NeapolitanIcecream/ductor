@@ -34,7 +34,6 @@ import hmac
 import ipaddress
 import json
 import logging
-import shutil
 from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -69,11 +68,6 @@ StreamingMessageHandler = Callable[..., Awaitable[Any]]
 AbortHandler = Callable[[int], Awaitable[int]]
 
 _MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
-
-
-def _detect_tailscale() -> bool:
-    """Return True if the ``tailscale`` binary is found in PATH."""
-    return shutil.which("tailscale") is not None
 
 
 def _is_loopback_bind(host: str) -> bool:
@@ -249,7 +243,7 @@ class ApiServer:
     async def start(self) -> None:
         """Create the aiohttp app and start listening."""
         bind_is_local = _is_loopback_bind(self._config.host)
-        bind_is_tailscale = _detect_tailscale() and _is_tailscale_bind(self._config.host)
+        bind_is_tailscale = _is_tailscale_bind(self._config.host)
         if not bind_is_local and not bind_is_tailscale and not self._config.allow_public:
             logger.error(
                 "API server refusing to bind %s:%d. Set api.host=127.0.0.1, "
@@ -263,7 +257,7 @@ class ApiServer:
                 "without api.allow_public=true"
             )
             raise RuntimeError(msg)
-        if not bind_is_local and self._config.allow_public:
+        if not bind_is_local and not bind_is_tailscale and self._config.allow_public:
             logger.warning(
                 "API server binding to %s:%d with api.allow_public=true; use TLS "
                 "or a private tunnel because the auth token is sent during the "

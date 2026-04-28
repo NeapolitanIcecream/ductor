@@ -137,10 +137,22 @@ class TestApiPosture:
         )
         server = ApiServer(config, default_chat_id=1)
         with (
-            patch("ductor_bot.api.server._detect_tailscale", return_value=False),
             pytest.raises(RuntimeError, match="refusing to bind"),
         ):
             await server.start()
+
+    async def test_start_allows_tailscale_cgnat_bind_without_binary(self) -> None:
+        config = ApiConfig(
+            enabled=True,
+            host="100.64.0.1",
+            port=0,
+            token="tok",
+            allow_public=False,
+        )
+        server = ApiServer(config, default_chat_id=1)
+        with patch("aiohttp.web.TCPSite.start", new_callable=AsyncMock):
+            await server.start()
+        await server.stop()
 
 
 class TestE2EHandshake:
