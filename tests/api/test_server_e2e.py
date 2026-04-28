@@ -377,9 +377,7 @@ class TestEncryptedMessages:
 
         assert resp["type"] == "abort_ok"
         assert resp["killed"] == 2
-        abort_handler.assert_awaited_once_with(
-            SessionKey(transport="api", chat_id=999, topic_id=7)
-        )
+        abort_handler.assert_awaited_once_with(SessionKey(transport="api", chat_id=999, topic_id=7))
         await ws.close()
         await tc.close()
 
