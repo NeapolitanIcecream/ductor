@@ -163,8 +163,7 @@ class ProcessRegistry:
         topic_id: int | None = None,
     ) -> None:
         """Clear the abort flag for *chat_id*."""
-        if transport is None or transport == "tg":
-            self._aborted.discard(chat_id)
+        self._aborted.discard(chat_id)
         if transport is None:
             self._aborted_sessions = {k for k in self._aborted_sessions if k[1] != chat_id}
         else:

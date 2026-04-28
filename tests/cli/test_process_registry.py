@@ -90,6 +90,15 @@ def test_clear_abort() -> None:
     assert reg.was_aborted(1) is False
 
 
+def test_clear_abort_with_transport_clears_chat_wide_abort() -> None:
+    reg = ProcessRegistry()
+    reg._aborted.add(1)
+
+    reg.clear_abort(1, transport="api")
+
+    assert reg.was_aborted(1, transport="api") is False
+
+
 async def test_kill_all_empty_returns_zero() -> None:
     reg = ProcessRegistry()
     count = await reg.kill_all(chat_id=999)
