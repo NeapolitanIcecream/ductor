@@ -177,7 +177,7 @@ async def _reset_on_error(
     cli_detail: str = "",
 ) -> OrchestratorResult:
     """Kill processes, preserve session, return user-facing error."""
-    await orch._process_registry.kill_all(key.chat_id)
+    await _kill_active_for_key(orch, key)
     logger.warning("Session error preserved model=%s provider=%s", model_name, provider_name)
     return OrchestratorResult(
         text=session_error_text(model_name, cli_detail),
@@ -197,7 +197,7 @@ async def _handle_timeout(
     so that the next user message can ``--resume`` the timed-out session.
     """
     model_name, _provider_name = _request_target(orch, request)
-    await orch._process_registry.kill_all(key.chat_id)
+    await _kill_active_for_key(orch, key)
 
     # Persist the session_id captured from SystemInitEvent so resume works.
     if response.session_id and response.session_id != session.session_id:
@@ -358,7 +358,7 @@ async def _recover_session(
     logger.warning("recovery.%s chat=%s action=retry", ctx.reason, key.chat_id)
     model_name = ctx.model_override or orch._config.model
     provider_name = orch.models.provider_for(model_name)
-    await orch._process_registry.kill_all(key.chat_id)
+    await _kill_active_for_key(orch, key)
     orch._process_registry.clear_abort(
         key.chat_id,
         transport=key.transport,
@@ -383,6 +383,17 @@ async def _recover_session(
     else:
         response = await orch._cli_service.execute(request)
     return request, session, response
+
+
+async def _kill_active_for_key(orch: Orchestrator, key: SessionKey) -> int:
+    """Kill active CLI processes without crossing transport boundaries."""
+    if key.transport == "tg":
+        return await orch._process_registry.kill_all(key.chat_id)
+    return await orch._process_registry.kill_for_session(
+        key.chat_id,
+        transport=key.transport,
+        topic_id=key.topic_id,
+    )
 
 
 def _request_target(orch: Orchestrator, request: AgentRequest) -> tuple[str, str]:
