@@ -29,6 +29,7 @@ def test_register_returns_tracked() -> None:
     assert isinstance(tracked, TrackedProcess)
     assert tracked.chat_id == 1
     assert tracked.label == "main"
+    assert tracked.transport == "tg"
 
 
 def test_unregister_removes_process() -> None:
@@ -65,12 +66,37 @@ async def test_kill_all_sets_aborted() -> None:
     assert reg.was_aborted(1) is True
 
 
+async def test_kill_for_session_keeps_other_transports() -> None:
+    reg = ProcessRegistry()
+    tg_proc = _mock_process(pid=10)
+    api_proc = _mock_process(pid=11)
+    reg.register(chat_id=1, process=tg_proc, label="main", transport="tg")
+    reg.register(chat_id=1, process=api_proc, label="main", transport="api")
+
+    with patch("ductor_bot.cli.process_registry.asyncio.sleep", new_callable=AsyncMock):
+        count = await reg.kill_for_session(chat_id=1, transport="api")
+
+    assert count == 1
+    assert reg.has_active(1) is True
+    assert reg.was_aborted(1) is False
+    assert reg.was_aborted(1, transport="api") is True
+
+
 def test_clear_abort() -> None:
     reg = ProcessRegistry()
     reg._aborted.add(1)
     assert reg.was_aborted(1) is True
     reg.clear_abort(1)
     assert reg.was_aborted(1) is False
+
+
+def test_clear_abort_with_transport_clears_chat_wide_abort() -> None:
+    reg = ProcessRegistry()
+    reg._aborted.add(1)
+
+    reg.clear_abort(1, transport="api")
+
+    assert reg.was_aborted(1, transport="api") is False
 
 
 async def test_kill_all_empty_returns_zero() -> None:

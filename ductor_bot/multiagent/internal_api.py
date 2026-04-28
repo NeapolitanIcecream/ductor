@@ -12,7 +12,9 @@ The server also starts in **task-only mode** (no multi-agent bus) when
 
 from __future__ import annotations
 
+import hmac
 import logging
+import secrets
 from dataclasses import asdict
 from typing import TYPE_CHECKING
 
@@ -46,10 +48,12 @@ class InternalAgentAPI:
         port: int = _DEFAULT_PORT,
         *,
         docker_mode: bool = False,
+        auth_token: str | None = None,
     ) -> None:
         self._bus = bus
         self._port = port
         self._bind_host = _BIND_ALL_HOST if docker_mode else "127.0.0.1"
+        self._auth_token = auth_token or secrets.token_urlsafe(32)
         self._health_ref: dict[str, AgentHealth] | None = None
         self._task_hub: TaskHub | None = None
         self._app = web.Application()
@@ -83,6 +87,11 @@ class InternalAgentAPI:
     def port(self) -> int:
         return self._port
 
+    @property
+    def auth_token(self) -> str:
+        """Bearer token required for mutating and listing internal endpoints."""
+        return self._auth_token
+
     async def start(self) -> bool:
         """Start the internal API server.
 
@@ -114,12 +123,27 @@ class InternalAgentAPI:
             self._runner = None
             logger.info("Internal agent API stopped")
 
+    def _require_auth(self, request: web.Request) -> web.Response | None:
+        """Validate the internal bearer token for protected endpoints."""
+        auth = request.headers.get("Authorization", "")
+        scheme, _, token = auth.partition(" ")
+        if scheme != "Bearer" or not token or not hmac.compare_digest(token, self._auth_token):
+            return web.json_response(
+                {"success": False, "error": "Unauthorized"},
+                status=401,
+            )
+        return None
+
     async def _handle_send(self, request: web.Request) -> web.Response:
         """POST /interagent/send — send a message to another agent.
 
         Expects JSON body: ``{"from": "agent_name", "to": "agent_name", "message": "..."}``
         Returns JSON: ``{"sender": "...", "text": "...", "success": true/false, "error": "..."}``
         """
+        auth_error = self._require_auth(request)
+        if auth_error is not None:
+            return auth_error
+
         try:
             data = await request.json()
         except Exception:
@@ -154,6 +178,10 @@ class InternalAgentAPI:
         Expects JSON body: ``{"from": "agent_name", "to": "agent_name", "message": "..."}``
         Returns immediately: ``{"success": true/false, "task_id": "...", "error": "..."}``
         """
+        auth_error = self._require_auth(request)
+        if auth_error is not None:
+            return auth_error
+
         try:
             data = await request.json()
         except Exception:
@@ -211,6 +239,10 @@ class InternalAgentAPI:
 
     async def _handle_list(self, request: web.Request) -> web.Response:
         """GET /interagent/agents — list all registered agents."""
+        auth_error = self._require_auth(request)
+        if auth_error is not None:
+            return auth_error
+
         assert self._bus is not None  # Routes only registered when bus is set
         return web.json_response({"agents": self._bus.list_agents()})
 
@@ -237,6 +269,10 @@ class InternalAgentAPI:
         Expects JSON: ``{"from": "agent", "prompt": "...", "name": "...",
         "provider": null, "model": null, "thinking": null}``
         """
+        auth_error = self._require_auth(request)
+        if auth_error is not None:
+            return auth_error
+
         if self._task_hub is None:
             return web.json_response(
                 {"success": False, "error": "Task system not available"},
@@ -281,11 +317,17 @@ class InternalAgentAPI:
 
         return web.json_response({"success": True, "task_id": task_id})
 
-    async def _handle_task_resume(self, request: web.Request) -> web.Response:
+    async def _handle_task_resume(  # noqa: PLR0911
+        self, request: web.Request
+    ) -> web.Response:
         """POST /tasks/resume — resume a completed task with a follow-up.
 
         Expects JSON: ``{"task_id": "...", "prompt": "...", "from": "agent"}``
         """
+        auth_error = self._require_auth(request)
+        if auth_error is not None:
+            return auth_error
+
         if self._task_hub is None:
             return web.json_response(
                 {"success": False, "error": "Task system not available"},
@@ -331,6 +373,10 @@ class InternalAgentAPI:
         Expects JSON: ``{"task_id": "...", "question": "..."}``
         Returns immediately. The parent agent will resume the task with the answer.
         """
+        auth_error = self._require_auth(request)
+        if auth_error is not None:
+            return auth_error
+
         if self._task_hub is None:
             return web.json_response(
                 {"success": False, "error": "Task system not available"},
@@ -365,6 +411,10 @@ class InternalAgentAPI:
 
     async def _handle_task_list(self, request: web.Request) -> web.Response:
         """GET /tasks/list — list tasks, filtered by parent_agent if provided."""
+        auth_error = self._require_auth(request)
+        if auth_error is not None:
+            return auth_error
+
         if self._task_hub is None:
             return web.json_response({"tasks": []})
 
@@ -378,6 +428,10 @@ class InternalAgentAPI:
 
     async def _handle_task_cancel(self, request: web.Request) -> web.Response:
         """POST /tasks/cancel — cancel a running task."""
+        auth_error = self._require_auth(request)
+        if auth_error is not None:
+            return auth_error
+
         if self._task_hub is None:
             return web.json_response(
                 {"success": False, "error": "Task system not available"},
@@ -416,6 +470,10 @@ class InternalAgentAPI:
         self, request: web.Request
     ) -> web.Response:
         """POST /tasks/delete — permanently delete a finished task (entry + folder)."""
+        auth_error = self._require_auth(request)
+        if auth_error is not None:
+            return auth_error
+
         if self._task_hub is None:
             return web.json_response(
                 {"success": False, "error": "Task system not available"},

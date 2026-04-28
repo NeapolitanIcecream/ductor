@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -151,6 +152,7 @@ class Orchestrator:
                 gemini_cli_parameters=tuple(config.cli_parameters.gemini),
                 agent_name=agent_name,
                 interagent_port=interagent_port,
+                internal_api_token=os.environ.get("DUCTOR_INTERNAL_API_TOKEN", ""),
                 transcribe_command=config.transcription.audio_command,
                 video_transcribe_command=config.transcription.video_command,
             ),
@@ -325,7 +327,11 @@ class Orchestrator:
         return await self._handle_message_impl(dispatch)
 
     async def _handle_message_impl(self, dispatch: _MessageDispatch) -> OrchestratorResult:
-        self._process_registry.clear_abort(dispatch.key.chat_id)
+        self._process_registry.clear_abort(
+            dispatch.key.chat_id,
+            transport=dispatch.key.transport,
+            topic_id=dispatch.key.topic_id,
+        )
         logger.info("Message received text=%s", dispatch.cmd[:80])
 
         patterns = detect_suspicious_patterns(dispatch.text)
@@ -471,6 +477,22 @@ class Orchestrator:
             killed += await self._observers.background.cancel_all(chat_id)
         self._named_sessions.end_all(chat_id)
         return killed
+
+    async def abort_session(self, key: SessionKey) -> int:
+        """Kill active work for a transport-scoped session."""
+        if key.transport == "tg":
+            return await self.abort(key.chat_id)
+        return await self.kill_processes_for_key(key)
+
+    async def kill_processes_for_key(self, key: SessionKey) -> int:
+        """Kill active CLI processes without crossing transport boundaries."""
+        if key.transport == "tg":
+            return await self._process_registry.kill_all(key.chat_id)
+        return await self._process_registry.kill_for_session(
+            key.chat_id,
+            transport=key.transport,
+            topic_id=key.topic_id,
+        )
 
     def interrupt(self, chat_id: int) -> int:
         """Send SIGINT to active CLI processes for *chat_id*.
@@ -684,6 +706,9 @@ class Orchestrator:
                     claude_cli_parameters=tuple(config.cli_parameters.claude),
                     codex_cli_parameters=tuple(config.cli_parameters.codex),
                     gemini_cli_parameters=tuple(config.cli_parameters.gemini),
+                    agent_name=self._cli_service._config.agent_name,
+                    interagent_port=self._cli_service._config.interagent_port,
+                    internal_api_token=self._cli_service._config.internal_api_token,
                     transcribe_command=config.transcription.audio_command,
                     video_transcribe_command=config.transcription.video_command,
                 )

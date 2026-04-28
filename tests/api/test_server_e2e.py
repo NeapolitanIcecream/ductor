@@ -25,6 +25,7 @@ from nacl.exceptions import CryptoError
 from ductor_bot.api.crypto import E2ESession
 from ductor_bot.api.server import ApiServer
 from ductor_bot.config import ApiConfig
+from ductor_bot.session.key import SessionKey
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -73,12 +74,15 @@ async def _do_handshake(
     ws: Any,
     token: str = _DEFAULT_TOKEN,
     chat_id: int | None = None,
+    channel_id: int | None = None,
 ) -> tuple[E2ESession, dict[str, Any]]:
     """Perform E2E handshake.  Returns (client_e2e, auth_ok_data)."""
     client = E2ESession()
     auth_msg: dict[str, Any] = {"type": "auth", "token": token, "e2e_pk": client.local_pk_b64}
     if chat_id is not None:
         auth_msg["chat_id"] = chat_id
+    if channel_id is not None:
+        auth_msg["channel_id"] = channel_id
     await ws.send_json(auth_msg)
     resp = await ws.receive_json()
     assert resp["type"] == "auth_ok"
@@ -116,6 +120,39 @@ async def api_ws(tmp_path: Path):
 # ---------------------------------------------------------------------------
 # Auth + E2E handshake tests
 # ---------------------------------------------------------------------------
+
+
+class TestApiPosture:
+    def test_default_host_is_loopback(self) -> None:
+        assert ApiConfig().host == "127.0.0.1"
+
+    async def test_start_refuses_public_bind_without_private_network(self) -> None:
+        public_host = ".".join(["0"] * 4)
+        config = ApiConfig(
+            enabled=True,
+            host=public_host,
+            port=0,
+            token="tok",
+            allow_public=False,
+        )
+        server = ApiServer(config, default_chat_id=1)
+        with (
+            pytest.raises(RuntimeError, match="refusing to bind"),
+        ):
+            await server.start()
+
+    async def test_start_allows_tailscale_cgnat_bind_without_binary(self) -> None:
+        config = ApiConfig(
+            enabled=True,
+            host="100.64.0.1",
+            port=0,
+            token="tok",
+            allow_public=False,
+        )
+        server = ApiServer(config, default_chat_id=1)
+        with patch("aiohttp.web.TCPSite.start", new_callable=AsyncMock):
+            await server.start()
+        await server.stop()
 
 
 class TestE2EHandshake:
@@ -175,6 +212,14 @@ class TestE2EHandshake:
         ws = await client.ws_connect("/ws")
         _, resp = await _do_handshake(ws, chat_id=999)
         assert resp["chat_id"] == 999
+        await ws.close()
+
+    async def test_channel_id_round_trips(self, api_ws: tuple[TestClient, ApiServer]) -> None:
+        client, _ = api_ws
+        ws = await client.ws_connect("/ws")
+        _, resp = await _do_handshake(ws, chat_id=999, channel_id=7)
+        assert resp["chat_id"] == 999
+        assert resp["channel_id"] == 7
         await ws.close()
 
     async def test_missing_e2e_pk_rejected(self, api_ws: tuple[TestClient, ApiServer]) -> None:
@@ -317,6 +362,25 @@ class TestEncryptedMessages:
         assert resp["killed"] == 0
         await ws.close()
 
+    async def test_abort_handler_receives_api_session_key(self, tmp_path: Path) -> None:
+        abort_handler = AsyncMock(return_value=2)
+        server = _make_server(tmp_path, abort_handler=abort_handler)
+        app = _build_app(server)
+        srv = TestServer(app)
+        tc = TestClient(srv)
+        await tc.start_server()
+
+        ws = await tc.ws_connect("/ws")
+        e2e, _ = await _do_handshake(ws, chat_id=999, channel_id=7)
+        await _send_encrypted(ws, e2e, {"type": "abort"})
+        resp = await _recv_encrypted(ws, e2e)
+
+        assert resp["type"] == "abort_ok"
+        assert resp["killed"] == 2
+        abort_handler.assert_awaited_once_with(SessionKey(transport="api", chat_id=999, topic_id=7))
+        await ws.close()
+        await tc.close()
+
     async def test_stop_command_triggers_abort(
         self,
         api_ws: tuple[TestClient, ApiServer],
@@ -372,6 +436,30 @@ class TestEncryptedMessages:
         assert resp["type"] == "error"
         assert resp["code"] == "decrypt_failed"
         await ws.close()
+
+    async def test_message_handler_uses_api_session_namespace(self, tmp_path: Path) -> None:
+        captured: dict[str, SessionKey] = {}
+
+        async def fake_handler(key: SessionKey, _text: str, **_kwargs: Any) -> SimpleNamespace:
+            captured["key"] = key
+            return SimpleNamespace(text="ok", stream_fallback=False)
+
+        server = _make_server(tmp_path, message_handler=AsyncMock(side_effect=fake_handler))
+        app = _build_app(server)
+        srv = TestServer(app)
+        tc = TestClient(srv)
+        await tc.start_server()
+
+        ws = await tc.ws_connect("/ws")
+        e2e, _ = await _do_handshake(ws, chat_id=999, channel_id=7)
+        await _send_encrypted(ws, e2e, {"type": "message", "text": "hello"})
+        result = await _recv_encrypted(ws, e2e)
+
+        assert result["type"] == "result"
+        assert captured["key"] == SessionKey(transport="api", chat_id=999, topic_id=7)
+        assert captured["key"].storage_key == "api:999:7"
+        await ws.close()
+        await tc.close()
 
     async def test_plaintext_json_rejected_after_auth(
         self,

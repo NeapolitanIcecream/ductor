@@ -27,6 +27,7 @@ class TrackedProcess:
     chat_id: int
     label: str
     topic_id: int | None = None
+    transport: str = "tg"
     registered_at: float = field(default_factory=time.time)
 
 
@@ -36,6 +37,7 @@ class ProcessRegistry:
     def __init__(self) -> None:
         self._processes: dict[int, list[TrackedProcess]] = {}
         self._aborted: set[int] = set()
+        self._aborted_sessions: set[tuple[str, int, int | None]] = set()
         self._aborted_labels: set[tuple[int, str]] = set()
         self._interrupted: set[int] = set()
         # MED #9: serialize bulk kill operations (kill_for_task / kill_stale /
@@ -52,6 +54,7 @@ class ProcessRegistry:
         label: str,
         *,
         topic_id: int | None = None,
+        transport: str = "tg",
     ) -> TrackedProcess:
         """Register a subprocess. Returns the tracking handle.
 
@@ -66,10 +69,12 @@ class ProcessRegistry:
             chat_id=chat_id,
             label=label,
             topic_id=topic_id,
+            transport=transport,
         )
         self._processes.setdefault(chat_id, []).append(tracked)
         logger.debug(
-            "Process registered: chat=%d label=%s pid=%s",
+            "Process registered: transport=%s chat=%d label=%s pid=%s",
+            transport,
             chat_id,
             label,
             process.pid,
@@ -102,6 +107,33 @@ class ProcessRegistry:
             return 0
         return await _kill_processes(entries)
 
+    async def kill_for_session(
+        self,
+        chat_id: int,
+        *,
+        transport: str,
+        topic_id: int | None = None,
+    ) -> int:
+        """Kill active processes for one transport-scoped session."""
+        async with self._kill_lock:
+            self._aborted_sessions.add((transport, chat_id, topic_id))
+            entries = self._processes.get(chat_id, [])
+            targets = [
+                e
+                for e in entries
+                if e.transport == transport
+                and e.topic_id == topic_id
+                and e.process.returncode is None
+            ]
+            if not targets:
+                return 0
+            remaining = [e for e in entries if e not in targets]
+            if remaining:
+                self._processes[chat_id] = remaining
+            else:
+                self._processes.pop(chat_id, None)
+            return await _kill_processes(targets)
+
     async def kill_all_active(self) -> int:
         """Kill active processes across all chats. Returns total count killed."""
         total = 0
@@ -109,13 +141,33 @@ class ProcessRegistry:
             total += await self.kill_all(chat_id)
         return total
 
-    def was_aborted(self, chat_id: int) -> bool:
+    def was_aborted(
+        self,
+        chat_id: int,
+        *,
+        transport: str | None = None,
+        topic_id: int | None = None,
+    ) -> bool:
         """Check whether *chat_id* has been aborted since last clear."""
-        return chat_id in self._aborted
+        if chat_id in self._aborted:
+            return True
+        if transport is None:
+            return False
+        return (transport, chat_id, topic_id) in self._aborted_sessions
 
-    def clear_abort(self, chat_id: int) -> None:
+    def clear_abort(
+        self,
+        chat_id: int,
+        *,
+        transport: str | None = None,
+        topic_id: int | None = None,
+    ) -> None:
         """Clear the abort flag for *chat_id*."""
         self._aborted.discard(chat_id)
+        if transport is None:
+            self._aborted_sessions = {k for k in self._aborted_sessions if k[1] != chat_id}
+        else:
+            self._aborted_sessions.discard((transport, chat_id, topic_id))
 
     def was_interrupted(self, chat_id: int) -> bool:
         """Check whether *chat_id* was soft-interrupted since last clear."""

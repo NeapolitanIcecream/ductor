@@ -53,6 +53,8 @@ def _build_subprocess_env(config: CLIConfig) -> dict[str, str] | None:
     env["DUCTOR_AGENT_NAME"] = config.agent_name
     env["DUCTOR_AGENT_ROLE"] = "main" if config.agent_name == "main" else "sub"
     env["DUCTOR_INTERAGENT_PORT"] = str(config.interagent_port)
+    if config.internal_api_token:
+        env["DUCTOR_INTERNAL_API_TOKEN"] = config.internal_api_token
     if config.chat_id:
         env["DUCTOR_CHAT_ID"] = str(config.chat_id)
     if config.topic_id:
@@ -159,7 +161,13 @@ async def run_streaming_subprocess(
 
     reg = config.process_registry
     tracked = (
-        reg.register(config.chat_id, process, config.process_label, topic_id=config.topic_id)
+        reg.register(
+            config.chat_id,
+            process,
+            config.process_label,
+            topic_id=config.topic_id,
+            transport=config.transport,
+        )
         if reg
         else None
     )
@@ -298,7 +306,13 @@ async def run_oneshot_subprocess(
 
     reg = config.process_registry
     tracked = (
-        reg.register(config.chat_id, process, config.process_label, topic_id=config.topic_id)
+        reg.register(
+            config.chat_id,
+            process,
+            config.process_label,
+            topic_id=config.topic_id,
+            transport=config.transport,
+        )
         if reg
         else None
     )

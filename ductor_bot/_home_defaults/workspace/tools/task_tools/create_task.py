@@ -18,8 +18,8 @@ Options:
                        follow-ups stay responsive; background (default)
                        and batch respect it.
 
-Environment variables DUCTOR_AGENT_NAME and DUCTOR_INTERAGENT_PORT are
-automatically set by the Ductor framework.
+Environment variables DUCTOR_AGENT_NAME, DUCTOR_INTERAGENT_PORT, and
+DUCTOR_INTERNAL_API_TOKEN are automatically set by the Ductor framework.
 """
 
 from __future__ import annotations

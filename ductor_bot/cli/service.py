@@ -107,6 +107,7 @@ class CLIServiceConfig:
     gemini_cli_parameters: tuple[str, ...] = ()
     agent_name: str = "main"
     interagent_port: int = 8799
+    internal_api_token: str = ""
     # External transcription hooks (#66) — empty strings keep built-in strategies.
     transcribe_command: str = ""
     video_transcribe_command: str = ""
@@ -221,7 +222,11 @@ class CLIService:
                 timeout_seconds=request.timeout_seconds,
                 timeout_controller=request.timeout_controller,
             ):
-                if self._process_registry.was_aborted(request.chat_id):
+                if self._process_registry.was_aborted(
+                    request.chat_id,
+                    transport=request.transport,
+                    topic_id=request.topic_id,
+                ):
                     logger.info("Streaming aborted mid-stream chat=%d", request.chat_id)
                     break
                 text, result = await callbacks.dispatch(event)
@@ -283,7 +288,11 @@ class CLIService:
         init_session_id: str | None = None,
     ) -> AgentResponse:
         """Handle failed or incomplete streaming: use accumulated text or retry."""
-        was_aborted = self._process_registry.was_aborted(request.chat_id)
+        was_aborted = self._process_registry.was_aborted(
+            request.chat_id,
+            transport=request.transport,
+            topic_id=request.topic_id,
+        )
         logger.info(
             "Stream fallback: aborted=%s accumulated=%d init_sid=%s",
             was_aborted,
@@ -345,12 +354,14 @@ class CLIService:
                 gemini_api_key=self._config.gemini_api_key,
                 docker_container=self._config.docker_container,
                 process_registry=self._process_registry,
+                transport=request.transport,
                 chat_id=request.chat_id,
                 topic_id=request.topic_id,
                 process_label=request.process_label,
                 cli_parameters=self._config.cli_parameters_for_provider(provider),
                 agent_name=self._config.agent_name,
                 interagent_port=self._config.interagent_port,
+                internal_api_token=self._config.internal_api_token,
                 transcribe_command=self._config.transcribe_command,
                 video_transcribe_command=self._config.video_transcribe_command,
             )

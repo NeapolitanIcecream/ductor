@@ -48,6 +48,7 @@ async def _inject_prompt(  # noqa: PLR0913
 
     request = AgentRequest(
         prompt=prompt,
+        transport=transport,
         chat_id=chat_id,
         topic_id=topic_id,
         process_label=process_label,

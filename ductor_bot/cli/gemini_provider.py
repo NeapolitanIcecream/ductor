@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT = 300.0
+_AbortScope = tuple[str, int, int | None]
 
 # Must match ``_DUCTOR_MOUNT`` in ``ductor_bot.infra.docker``.
 _CONTAINER_DUCTOR = "/ductor"
@@ -268,7 +269,14 @@ class GeminiCLI(BaseCLI):
                 stderr_bytes=stderr_bytes,
                 state=state,
             )
-            was_aborted = bool(reg and reg.was_aborted(self._config.chat_id))
+            was_aborted = bool(
+                reg
+                and reg.was_aborted(
+                    self._config.chat_id,
+                    transport=self._config.transport,
+                    topic_id=self._config.topic_id,
+                )
+            )
             if final_event is not None and not timed_out and not was_aborted:
                 yield final_event
         finally:
@@ -294,7 +302,11 @@ class GeminiCLI(BaseCLI):
                 state,
                 timeout_seconds=timeout_seconds or _DEFAULT_TIMEOUT,
                 process_registry=reg,
-                chat_id=self._config.chat_id,
+                abort_scope=(
+                    self._config.transport,
+                    self._config.chat_id,
+                    self._config.topic_id,
+                ),
             ):
                 yield event
             return
@@ -304,7 +316,11 @@ class GeminiCLI(BaseCLI):
             state,
             timeout_controller=timeout_controller,
             process_registry=reg,
-            chat_id=self._config.chat_id,
+            abort_scope=(
+                self._config.transport,
+                self._config.chat_id,
+                self._config.topic_id,
+            ),
         ):
             yield event
 
@@ -402,6 +418,7 @@ class GeminiCLI(BaseCLI):
                 process,
                 self._config.process_label,
                 topic_id=self._config.topic_id,
+                transport=self._config.transport,
             )
             if reg
             else None
@@ -441,13 +458,16 @@ async def _stream_events_plain(
     *,
     timeout_seconds: float,
     process_registry: ProcessRegistry | None,
-    chat_id: int,
+    abort_scope: _AbortScope,
 ) -> AsyncGenerator[StreamEvent, None]:
     """Read stream output with a fixed timeout (legacy behavior)."""
     assert process.stdout is not None
     async with asyncio.timeout(timeout_seconds):
         while True:
-            if process_registry and process_registry.was_aborted(chat_id):
+            transport, chat_id, topic_id = abort_scope
+            if process_registry and process_registry.was_aborted(
+                chat_id, transport=transport, topic_id=topic_id
+            ):
                 logger.info("Gemini streaming aborted by user")
                 return
 
@@ -471,7 +491,7 @@ async def _stream_events_with_controller(
     *,
     timeout_controller: TimeoutController,
     process_registry: ProcessRegistry | None,
-    chat_id: int,
+    abort_scope: _AbortScope,
 ) -> AsyncGenerator[StreamEvent, None]:
     """Read stream output with managed timeout extensions + warnings."""
     assert process.stdout is not None
@@ -483,7 +503,10 @@ async def _stream_events_with_controller(
             try:
                 async with asyncio.timeout(timeout_secs):
                     while True:
-                        if process_registry and process_registry.was_aborted(chat_id):
+                        transport, chat_id, topic_id = abort_scope
+                        if process_registry and process_registry.was_aborted(
+                            chat_id, transport=transport, topic_id=topic_id
+                        ):
                             logger.info("Gemini streaming aborted by user")
                             return
 

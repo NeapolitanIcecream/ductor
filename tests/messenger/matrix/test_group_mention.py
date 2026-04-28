@@ -177,7 +177,7 @@ class TestStripMention:
 
 
 # ---------------------------------------------------------------------------
-# _is_authorized (group_mention_only bypass)
+# _is_authorized
 # ---------------------------------------------------------------------------
 
 
@@ -221,7 +221,7 @@ class TestIsAuthorized:
         event = FakeEvent(sender="@alice:server")
         assert MatrixBot._is_authorized(stub, room, event) is True
 
-    def test_group_mention_only_bypasses_user_check(self) -> None:
+    def test_group_mention_only_still_checks_allowed_users(self) -> None:
         stub = _AuthBotStub(
             allowed_rooms=["!group:server"],
             allowed_users=["@alice:server"],
@@ -229,7 +229,16 @@ class TestIsAuthorized:
         )
         room = FakeRoom(room_id="!group:server", member_count=5)
         event = FakeEvent(sender="@unknown:server")
-        # User not in allowed_users but group_mention_only bypasses
+        assert MatrixBot._is_authorized(stub, room, event) is False
+
+    def test_group_mention_only_allows_authorized_user(self) -> None:
+        stub = _AuthBotStub(
+            allowed_rooms=["!group:server"],
+            allowed_users=["@alice:server"],
+            group_mention_only=True,
+        )
+        room = FakeRoom(room_id="!group:server", member_count=5)
+        event = FakeEvent(sender="@alice:server")
         assert MatrixBot._is_authorized(stub, room, event) is True
 
     def test_group_unauthorized_room_rejected(self) -> None:

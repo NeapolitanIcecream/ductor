@@ -68,9 +68,9 @@ For user-facing schedules, set `user_timezone` explicitly.
 ### File Sending Scope
 
 - `file_access` controls what can be sent via `<file:...>`:
-  - `all` (default)
+  - `workspace` (default)
+  - `all`
   - `home`
-  - `workspace`
 
 ### CLI Parameters
 

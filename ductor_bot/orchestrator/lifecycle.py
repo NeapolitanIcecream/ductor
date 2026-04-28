@@ -150,7 +150,7 @@ async def start_api_server(
     )
     server = ApiServer(config.api, default_chat_id=default_chat_id)
     server.set_message_handler(orch.handle_message_streaming)
-    server.set_abort_handler(orch.abort)
+    server.set_abort_handler(orch.abort_session)
     server.set_file_context(
         allowed_roots=resolve_allowed_roots(config.file_access, paths.workspace),
         upload_dir=paths.api_files_dir,
@@ -163,7 +163,7 @@ async def start_api_server(
 
     try:
         await server.start()
-    except OSError:
+    except (OSError, RuntimeError):
         logger.exception(
             "Failed to start API server on %s:%d",
             config.api.host,

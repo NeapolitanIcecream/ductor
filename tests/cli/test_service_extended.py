@@ -64,6 +64,16 @@ def test_make_cli_with_provider_override(tmp_path: Path) -> None:
     assert call_args.provider == "codex"
 
 
+def test_make_cli_passes_request_transport(tmp_path: Path) -> None:
+    svc = _make_service(tmp_path)
+    with patch("ductor_bot.cli.service.create_cli") as mock_create:
+        mock_create.return_value = MagicMock()
+        svc._make_cli(AgentRequest(prompt="test", transport="api", chat_id=1))
+
+    call_args = mock_create.call_args[0][0]
+    assert call_args.transport == "api"
+
+
 def test_make_cli_does_not_auto_fallback_provider(tmp_path: Path) -> None:
     """Native model/provider mapping should be preserved even if unavailable."""
     svc = _make_service(tmp_path, available_providers=frozenset({"codex"}))

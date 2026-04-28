@@ -20,11 +20,11 @@ Provides transport-independent access to the same orchestrator/session system us
 | Field | Default | Description |
 |---|---|---|
 | `enabled` | `false` | start API server |
-| `host` | `0.0.0.0` | bind address |
+| `host` | `127.0.0.1` | bind address |
 | `port` | `8741` | API port |
 | `token` | `""` | auth token (generated when enabling/first start fallback) |
 | `chat_id` | `0` | default chat scope (`0` -> fallback to first `allowed_user_ids`, else `1`) |
-| `allow_public` | `false` | suppress tailscale warning |
+| `allow_public` | `false` | allow non-loopback, non-Tailscale bind |
 
 ## Auth and E2E handshake
 

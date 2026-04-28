@@ -166,6 +166,28 @@ async def test_normal_sigkill_recovers_once_then_succeeds(orch: Orchestrator) ->
     )
 
 
+async def test_api_sigkill_recovery_is_transport_scoped(orch: Orchestrator) -> None:
+    """API recovery must not kill unrelated Telegram work for the same chat_id."""
+    sigkill_resp = _mock_response(is_error=True, result="killed", returncode=-9)
+    success_resp = _mock_response(result="Recovered")
+    mock_execute = AsyncMock(side_effect=[sigkill_resp, success_resp])
+    mock_kill_all = AsyncMock(return_value=0)
+    mock_kill_for_session = AsyncMock(return_value=0)
+    mock_reset_provider = AsyncMock()
+    object.__setattr__(orch._cli_service, "execute", mock_execute)
+    object.__setattr__(orch._process_registry, "kill_all", mock_kill_all)
+    object.__setattr__(orch._process_registry, "kill_for_session", mock_kill_for_session)
+    object.__setattr__(orch._sessions, "reset_provider_session", mock_reset_provider)
+
+    key = SessionKey(transport="api", chat_id=1, topic_id=7)
+    result = await normal(orch, key, "Hello")
+
+    assert result.text == "Recovered"
+    mock_kill_all.assert_not_awaited()
+    mock_kill_for_session.assert_awaited_once_with(1, transport="api", topic_id=7)
+    mock_reset_provider.assert_called_once_with(key, provider="claude", model="opus")
+
+
 async def test_normal_sigkill_recovers_once_then_asks_user_retry(orch: Orchestrator) -> None:
     """If recovery retry also SIGKILLs, return explicit user guidance."""
     sigkill_resp = _mock_response(is_error=True, result="killed", returncode=-9)

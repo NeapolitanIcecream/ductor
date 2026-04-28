@@ -44,6 +44,19 @@ async def test_new_command(orch: Orchestrator) -> None:
     mock_kill.assert_called_once_with(1)
 
 
+async def test_api_new_command_kills_only_api_session(orch: Orchestrator) -> None:
+    mock_kill_all = AsyncMock(return_value=0)
+    mock_kill_for_session = AsyncMock(return_value=0)
+    object.__setattr__(orch._process_registry, "kill_all", mock_kill_all)
+    object.__setattr__(orch._process_registry, "kill_for_session", mock_kill_for_session)
+
+    result = await orch.handle_message(SessionKey(transport="api", chat_id=1, topic_id=7), "/new")
+
+    assert "session reset" in result.text.lower()
+    mock_kill_all.assert_not_awaited()
+    mock_kill_for_session.assert_awaited_once_with(1, transport="api", topic_id=7)
+
+
 async def test_new_command_resets_only_active_provider_bucket(orch: Orchestrator) -> None:
     """#82: /new resets the CONFIG-DEFAULT provider's bucket, not whatever the
     user last switched to via /model. The sibling bucket is preserved.
