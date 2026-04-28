@@ -63,9 +63,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Callback types matching Orchestrator.handle_message_streaming / abort
+# Callback types matching Orchestrator.handle_message_streaming / abort_session
 StreamingMessageHandler = Callable[..., Awaitable[Any]]
-AbortHandler = Callable[[int], Awaitable[int]]
+AbortHandler = Callable[[SessionKey], Awaitable[int]]
 
 _MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 
@@ -567,14 +567,14 @@ class ApiServer:
                 return
             # Intercept /stop since the orchestrator doesn't handle it
             if text.lower() == "/stop":
-                await self._dispatch_abort(channel, key.chat_id)
+                await self._dispatch_abort(channel, key)
                 return
             async with lock:
                 set_log_context(operation="api", chat_id=key.chat_id)
                 await self._dispatch_message(channel, key, text)
 
         elif msg_type == "abort":
-            await self._dispatch_abort(channel, key.chat_id)
+            await self._dispatch_abort(channel, key)
 
         else:
             await channel.send(
@@ -615,7 +615,7 @@ class ApiServer:
                 key.storage_key,
             )
             if self._handle_abort:
-                await self._handle_abort(key.chat_id)
+                await self._handle_abort(key)
             return
 
         # Parse file references from the response for the app
@@ -662,10 +662,10 @@ class ApiServer:
     async def _dispatch_abort(
         self,
         channel: _SecureChannel,
-        chat_id: int,
+        key: SessionKey,
     ) -> None:
-        """Abort running CLI processes for this chat."""
+        """Abort running CLI processes for this API session."""
         killed = 0
         if self._handle_abort:
-            killed = await self._handle_abort(chat_id)
+            killed = await self._handle_abort(key)
         await channel.send({"type": "abort_ok", "killed": killed})

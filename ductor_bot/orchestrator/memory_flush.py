@@ -114,6 +114,7 @@ class MemoryFlusher:
 
         request = AgentRequest(
             prompt=self._config.flush_prompt,
+            transport=key.transport,
             chat_id=key.chat_id,
             topic_id=key.topic_id,
             resume_session=session_id,
@@ -142,6 +143,7 @@ class MemoryFlusher:
         prompt = self._render_compact_prompt()
         request = AgentRequest(
             prompt=prompt,
+            transport=key.transport,
             chat_id=key.chat_id,
             topic_id=key.topic_id,
             resume_session=session_id,

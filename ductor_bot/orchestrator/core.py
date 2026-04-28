@@ -327,7 +327,11 @@ class Orchestrator:
         return await self._handle_message_impl(dispatch)
 
     async def _handle_message_impl(self, dispatch: _MessageDispatch) -> OrchestratorResult:
-        self._process_registry.clear_abort(dispatch.key.chat_id)
+        self._process_registry.clear_abort(
+            dispatch.key.chat_id,
+            transport=dispatch.key.transport,
+            topic_id=dispatch.key.topic_id,
+        )
         logger.info("Message received text=%s", dispatch.cmd[:80])
 
         patterns = detect_suspicious_patterns(dispatch.text)
@@ -473,6 +477,16 @@ class Orchestrator:
             killed += await self._observers.background.cancel_all(chat_id)
         self._named_sessions.end_all(chat_id)
         return killed
+
+    async def abort_session(self, key: SessionKey) -> int:
+        """Kill active work for a transport-scoped session."""
+        if key.transport == "tg":
+            return await self.abort(key.chat_id)
+        return await self._process_registry.kill_for_session(
+            key.chat_id,
+            transport=key.transport,
+            topic_id=key.topic_id,
+        )
 
     def interrupt(self, chat_id: int) -> int:
         """Send SIGINT to active CLI processes for *chat_id*.

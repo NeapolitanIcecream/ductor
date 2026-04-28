@@ -161,7 +161,13 @@ async def run_streaming_subprocess(
 
     reg = config.process_registry
     tracked = (
-        reg.register(config.chat_id, process, config.process_label, topic_id=config.topic_id)
+        reg.register(
+            config.chat_id,
+            process,
+            config.process_label,
+            topic_id=config.topic_id,
+            transport=config.transport,
+        )
         if reg
         else None
     )
@@ -300,7 +306,13 @@ async def run_oneshot_subprocess(
 
     reg = config.process_registry
     tracked = (
-        reg.register(config.chat_id, process, config.process_label, topic_id=config.topic_id)
+        reg.register(
+            config.chat_id,
+            process,
+            config.process_label,
+            topic_id=config.topic_id,
+            transport=config.transport,
+        )
         if reg
         else None
     )

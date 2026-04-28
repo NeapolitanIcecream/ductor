@@ -362,6 +362,27 @@ class TestEncryptedMessages:
         assert resp["killed"] == 0
         await ws.close()
 
+    async def test_abort_handler_receives_api_session_key(self, tmp_path: Path) -> None:
+        abort_handler = AsyncMock(return_value=2)
+        server = _make_server(tmp_path, abort_handler=abort_handler)
+        app = _build_app(server)
+        srv = TestServer(app)
+        tc = TestClient(srv)
+        await tc.start_server()
+
+        ws = await tc.ws_connect("/ws")
+        e2e, _ = await _do_handshake(ws, chat_id=999, channel_id=7)
+        await _send_encrypted(ws, e2e, {"type": "abort"})
+        resp = await _recv_encrypted(ws, e2e)
+
+        assert resp["type"] == "abort_ok"
+        assert resp["killed"] == 2
+        abort_handler.assert_awaited_once_with(
+            SessionKey(transport="api", chat_id=999, topic_id=7)
+        )
+        await ws.close()
+        await tc.close()
+
     async def test_stop_command_triggers_abort(
         self,
         api_ws: tuple[TestClient, ApiServer],
