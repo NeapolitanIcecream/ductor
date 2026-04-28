@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import ipaddress
 import json
 import logging
 import shutil
@@ -73,6 +74,26 @@ _MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 def _detect_tailscale() -> bool:
     """Return True if the ``tailscale`` binary is found in PATH."""
     return shutil.which("tailscale") is not None
+
+
+def _is_loopback_bind(host: str) -> bool:
+    """Return True when *host* only accepts local connections."""
+    normalized = host.strip().lower()
+    if normalized == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return False
+
+
+def _is_tailscale_bind(host: str) -> bool:
+    """Return True when *host* is in Tailscale's CGNAT IPv4 range."""
+    try:
+        ip = ipaddress.ip_address(host.strip())
+    except ValueError:
+        return False
+    return ip in ipaddress.ip_network("100.64.0.0/10")
 
 
 async def _ws_send(ws: web.WebSocketResponse, data: dict[str, object]) -> bool:
@@ -227,12 +248,26 @@ class ApiServer:
 
     async def start(self) -> None:
         """Create the aiohttp app and start listening."""
-        if not _detect_tailscale() and not self._config.allow_public:
+        bind_is_local = _is_loopback_bind(self._config.host)
+        bind_is_tailscale = _detect_tailscale() and _is_tailscale_bind(self._config.host)
+        if not bind_is_local and not bind_is_tailscale and not self._config.allow_public:
+            logger.error(
+                "API server refusing to bind %s:%d. Set api.host=127.0.0.1, "
+                "bind to a Tailscale 100.64.0.0/10 address, or set "
+                "api.allow_public=true to acknowledge the risk.",
+                self._config.host,
+                self._config.port,
+            )
+            msg = (
+                "API server refusing to bind a non-loopback, non-Tailscale interface "
+                "without api.allow_public=true"
+            )
+            raise RuntimeError(msg)
+        if not bind_is_local and self._config.allow_public:
             logger.warning(
-                "API server: Tailscale NOT detected. Your API may be exposed "
-                "to the public internet on %s:%d. Install Tailscale for secure "
-                "private networking, or set api.allow_public=true in config to "
-                "acknowledge this risk.",
+                "API server binding to %s:%d with api.allow_public=true; use TLS "
+                "or a private tunnel because the auth token is sent during the "
+                "plaintext WebSocket auth frame.",
                 self._config.host,
                 self._config.port,
             )
@@ -270,6 +305,8 @@ class ApiServer:
 
     def _verify_bearer(self, request: web.Request) -> bool:
         """Check ``Authorization: Bearer <token>`` header."""
+        if not self._config.token:
+            return False
         auth = request.headers.get("Authorization", "")
         if not auth.startswith("Bearer "):
             return False
@@ -436,7 +473,7 @@ class ApiServer:
             return None
 
         token = str(data.get("token", ""))
-        if not hmac.compare_digest(token, self._config.token):
+        if not self._config.token or not hmac.compare_digest(token, self._config.token):
             logger.warning("API auth failed (invalid token)")
             await _ws_reject(ws, "auth_failed", "Invalid token")
             return None
@@ -464,7 +501,7 @@ class ApiServer:
         if not isinstance(channel_id, int) or channel_id <= 0:
             channel_id = None
 
-        key = SessionKey(chat_id=chat_id, topic_id=channel_id)
+        key = SessionKey.for_transport("api", chat_id=chat_id, topic_id=channel_id)
 
         # Last plaintext message -- everything after this is E2E encrypted
         auth_ok_payload: dict[str, object] = {

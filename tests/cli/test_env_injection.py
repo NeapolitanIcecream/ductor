@@ -53,6 +53,17 @@ def test_subprocess_env_works_without_env_file(tmp_path: Path) -> None:
     assert "DUCTOR_AGENT_NAME" in env
 
 
+def test_subprocess_env_injects_internal_api_token(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    config = CLIConfig(working_dir=str(workspace), internal_api_token="secret-token")
+    env = _build_subprocess_env(config)
+
+    assert env is not None
+    assert env["DUCTOR_INTERNAL_API_TOKEN"] == "secret-token"
+
+
 def test_docker_wrap_injects_secrets(tmp_path: Path) -> None:
     """Docker wrap should include .env secrets as -e flags."""
     workspace = tmp_path / "workspace"
@@ -70,6 +81,21 @@ def test_docker_wrap_injects_secrets(tmp_path: Path) -> None:
 
     assert cwd is None  # Docker mode
     assert "PPLX_API_KEY=sk-test" in cmd
+
+
+def test_docker_wrap_injects_internal_api_token(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    config = CLIConfig(
+        working_dir=str(workspace),
+        docker_container="test-container",
+        internal_api_token="secret-token",
+    )
+    cmd, cwd = docker_wrap(["gemini"], config)
+
+    assert cwd is None
+    assert "DUCTOR_INTERNAL_API_TOKEN=secret-token" in cmd
 
 
 def test_docker_wrap_does_not_override_host_env(tmp_path: Path) -> None:

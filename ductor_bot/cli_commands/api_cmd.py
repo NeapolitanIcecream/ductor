@@ -9,7 +9,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from ductor_bot.config import _BIND_ALL_INTERFACES
+from ductor_bot.config import _LOOPBACK_INTERFACE
 from ductor_bot.i18n import t_rich
 from ductor_bot.workspace.paths import resolve_paths
 
@@ -114,7 +114,7 @@ def api_enable() -> None:
     api["enabled"] = True
     if not api.get("token"):
         api["token"] = _secrets.token_urlsafe(32)
-    api.setdefault("host", _BIND_ALL_INTERFACES)
+    api.setdefault("host", _LOOPBACK_INTERFACE)
     api.setdefault("port", 8741)
     api.setdefault("chat_id", 0)
     api.setdefault("allow_public", False)

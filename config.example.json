@@ -17,7 +17,7 @@
     "permission_mode": "bypassPermissions",
     "cli_timeout": 600.0,
     "reasoning_effort": "medium",
-    "file_access": "all",
+    "file_access": "workspace",
     "gemini_api_key": "null",
     "transport": "telegram",
     "transports": ["telegram"],
@@ -94,7 +94,7 @@
     },
     "api": {
         "enabled": false,
-        "host": "0.0.0.0",
+        "host": "127.0.0.1",
         "port": 8741,
         "token": "YOUR_API_TOKEN",
         "chat_id": 123456789,

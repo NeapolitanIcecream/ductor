@@ -806,16 +806,11 @@ class MatrixBot:
     ) -> bool:
         """Check if the sender/room is authorized.
 
-        In group rooms with ``group_mention_only``, the user check is
-        bypassed — the @mention itself acts as the access gate (matching
-        Telegram behaviour).
+        In group rooms with ``group_mention_only``, mention detection happens
+        before this check; sender and room allowlists still apply here.
         """
         mx = self._config.matrix
         room_ok = not mx.allowed_rooms or room.room_id in self._allowed_rooms_set
-
-        # In group rooms with group_mention_only, skip user check
-        if self._config.group_mention_only and not self._is_dm_room(room):
-            return room_ok
 
         user_ok = not mx.allowed_users or event.sender in mx.allowed_users
         return room_ok and user_ok

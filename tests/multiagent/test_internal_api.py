@@ -11,6 +11,9 @@ from ductor_bot.multiagent.bus import InterAgentBus
 from ductor_bot.multiagent.health import AgentHealth
 from ductor_bot.multiagent.internal_api import InternalAgentAPI
 
+_AUTH_TOKEN = "test-internal-token"
+_AUTH_HEADERS = {"Authorization": f"Bearer {_AUTH_TOKEN}"}
+
 
 @pytest.fixture
 def bus() -> InterAgentBus:
@@ -19,7 +22,7 @@ def bus() -> InterAgentBus:
 
 @pytest.fixture
 def api(bus: InterAgentBus) -> InternalAgentAPI:
-    return InternalAgentAPI(bus, port=0)
+    return InternalAgentAPI(bus, port=0, auth_token=_AUTH_TOKEN)
 
 
 @pytest.fixture
@@ -30,6 +33,7 @@ async def client(api: InternalAgentAPI) -> TestClient:
     server = TestServer(api._app)
     c = TestClient(server)
     await c.start_server()
+    c.session.headers.update(_AUTH_HEADERS)
     yield c
     await c.close()
 
@@ -80,6 +84,59 @@ class TestHandleSend:
         data = await resp.json()
         assert data["success"] is False
         assert "not found" in data["error"]
+
+
+class TestAuth:
+    """Protected endpoints require the supervisor-issued bearer token."""
+
+    async def test_interagent_send_rejects_missing_token(self, bus: InterAgentBus) -> None:
+        from aiohttp.test_utils import TestServer
+
+        api = InternalAgentAPI(bus, port=0, auth_token=_AUTH_TOKEN)
+        server = TestServer(api._app)
+        client = TestClient(server)
+        await client.start_server()
+        try:
+            resp = await client.post(
+                "/interagent/send",
+                json={"from": "sender", "to": "target", "message": "Hello"},
+            )
+            assert resp.status == 401
+            data = await resp.json()
+            assert data["success"] is False
+            assert data["error"] == "Unauthorized"
+        finally:
+            await client.close()
+
+    async def test_interagent_send_rejects_wrong_token(self, bus: InterAgentBus) -> None:
+        from aiohttp.test_utils import TestServer
+
+        api = InternalAgentAPI(bus, port=0, auth_token=_AUTH_TOKEN)
+        server = TestServer(api._app)
+        client = TestClient(server)
+        await client.start_server()
+        try:
+            resp = await client.post(
+                "/interagent/send",
+                json={"from": "sender", "to": "target", "message": "Hello"},
+                headers={"Authorization": "Bearer wrong"},
+            )
+            assert resp.status == 401
+        finally:
+            await client.close()
+
+    async def test_health_remains_available_without_token(self, bus: InterAgentBus) -> None:
+        from aiohttp.test_utils import TestServer
+
+        api = InternalAgentAPI(bus, port=0, auth_token=_AUTH_TOKEN)
+        server = TestServer(api._app)
+        client = TestClient(server)
+        await client.start_server()
+        try:
+            resp = await client.get("/interagent/health")
+            assert resp.status == 200
+        finally:
+            await client.close()
 
 
 class TestHandleSendAsync:

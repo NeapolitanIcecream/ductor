@@ -179,7 +179,7 @@ Manual config equivalent:
 {
   "api": {
     "enabled": true,
-    "host": "0.0.0.0",
+    "host": "127.0.0.1",
     "port": 8741,
     "token": "",
     "chat_id": 0,

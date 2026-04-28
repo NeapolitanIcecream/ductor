@@ -133,6 +133,9 @@ Provider-switch safeguard:
 - host mode: `127.0.0.1:<port>`
 - Docker mode: `0.0.0.0:<port>`
 
+All endpoints below except `/interagent/health` require the bearer token passed
+to tool scripts as `DUCTOR_INTERNAL_API_TOKEN`.
+
 Inter-agent endpoints:
 
 - `POST /interagent/send`

@@ -9,8 +9,9 @@ The response ALWAYS comes back to YOU (the calling agent). There is no way
 to make the sub-agent reply in its own Telegram chat via this tool.
 
 Uses the internal localhost HTTP API to communicate with the bus.
-Environment variables DUCTOR_AGENT_NAME, DUCTOR_INTERAGENT_PORT, and
-DUCTOR_INTERAGENT_HOST are automatically set by the Ductor framework.
+Environment variables DUCTOR_AGENT_NAME, DUCTOR_INTERAGENT_PORT,
+DUCTOR_INTERAGENT_HOST, and DUCTOR_INTERNAL_API_TOKEN are automatically set
+by the Ductor framework.
 
 Usage:
     python3 ask_agent_async.py [--new] [--summary "Short description"]
@@ -106,7 +107,10 @@ def main() -> None:
     req = urllib.request.Request(
         url,
         data=payload,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            **_auth_headers(),
+        },
         method="POST",
     )
 
@@ -133,6 +137,13 @@ def main() -> None:
         error = result.get("error", "Unknown error")
         print(f"Error: {error}", file=sys.stderr)
         sys.exit(1)
+
+
+def _auth_headers() -> dict[str, str]:
+    token = os.environ.get("DUCTOR_INTERNAL_API_TOKEN", "")
+    if not token:
+        return {}
+    return {"Authorization": f"Bearer {token}"}
 
 
 if __name__ == "__main__":

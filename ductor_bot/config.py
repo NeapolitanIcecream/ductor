@@ -13,9 +13,7 @@ logger = logging.getLogger(__name__)
 NULLISH_TEXT_VALUES: frozenset[str] = frozenset({"null", "none"})
 DEFAULT_EMPTY_GEMINI_API_KEY: str = "null"
 
-# Intentional bind-all: the API is designed for private-network use (Tailscale).
-# Public exposure is gated by ``allow_public`` + a prominent warning at startup.
-_BIND_ALL_INTERFACES: str = ".".join(["0"] * 4)
+_LOOPBACK_INTERFACE: str = "127.0.0.1"
 
 # Pre-build a safe UTC fallback.  On Windows without the ``tzdata`` package
 # (now a declared dependency), ``ZoneInfo("UTC")`` raises.  The fallback
@@ -330,15 +328,16 @@ class ApiConfig(BaseModel):
     """Settings for the direct WebSocket API server.
 
     Designed for use over Tailscale or other private networks.
-    When ``allow_public`` is False and Tailscale is not detected,
-    the server still starts but logs a prominent warning.
+    By default the server binds to loopback only. Binding to a public
+    interface requires binding to a Tailscale 100.64.0.0/10 address or explicit
+    ``allow_public=true`` acknowledgment.
 
     ``chat_id`` controls which session the API client uses.
     ``0`` means "use the first ``allowed_user_ids`` entry".
     """
 
     enabled: bool = False
-    host: str = _BIND_ALL_INTERFACES
+    host: str = _LOOPBACK_INTERFACE
     port: int = 8741
     token: str = ""
     chat_id: int = 0
@@ -407,7 +406,7 @@ class AgentConfig(BaseModel):
     permission_mode: str = "bypassPermissions"
     cli_timeout: float = 1800.0
     reasoning_effort: str = "medium"
-    file_access: str = "all"
+    file_access: str = "workspace"
     gemini_api_key: str | None = None
     streaming: StreamingConfig = Field(default_factory=StreamingConfig)
     docker: DockerConfig = Field(default_factory=DockerConfig)

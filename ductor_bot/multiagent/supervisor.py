@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -115,6 +116,7 @@ class AgentSupervisor:
             port=self._main_config.interagent_port,
             docker_mode=self._main_config.docker.enabled,
         )
+        os.environ["DUCTOR_INTERNAL_API_TOKEN"] = self._internal_api.auth_token
         self._internal_api.set_health_ref(self._health)
         started = await self._internal_api.start()
         if not started:

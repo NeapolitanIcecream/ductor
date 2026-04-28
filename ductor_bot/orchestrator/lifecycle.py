@@ -163,7 +163,7 @@ async def start_api_server(
 
     try:
         await server.start()
-    except OSError:
+    except (OSError, RuntimeError):
         logger.exception(
             "Failed to start API server on %s:%d",
             config.api.host,

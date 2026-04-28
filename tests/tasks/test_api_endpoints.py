@@ -12,6 +12,9 @@ from ductor_bot.multiagent.internal_api import InternalAgentAPI
 if TYPE_CHECKING:
     from aiohttp.test_utils import TestClient
 
+_AUTH_TOKEN = "test-internal-token"
+_AUTH_HEADERS = {"Authorization": f"Bearer {_AUTH_TOKEN}"}
+
 
 def _make_task_hub(
     *,
@@ -34,11 +37,29 @@ def _make_task_hub(
 @pytest.fixture
 async def api_client(aiohttp_client: object) -> TestClient:
     """Create test client with task-only API (no bus)."""
-    api = InternalAgentAPI(bus=None, port=0)
+    api = InternalAgentAPI(bus=None, port=0, auth_token=_AUTH_TOKEN)
     hub = _make_task_hub()
     api.set_task_hub(hub)
     api._app["_test_hub"] = hub  # Stash for test access
-    return await aiohttp_client(api._app)  # type: ignore[return-value]
+    client = await aiohttp_client(api._app)
+    client.session.headers.update(_AUTH_HEADERS)
+    return client  # type: ignore[return-value]
+
+
+class TestAuth:
+    async def test_task_create_rejects_missing_token(self, aiohttp_client: object) -> None:
+        api = InternalAgentAPI(bus=None, port=0, auth_token=_AUTH_TOKEN)
+        api.set_task_hub(_make_task_hub())
+        client = await aiohttp_client(api._app)
+
+        resp = await client.post(
+            "/tasks/create",
+            json={"from": "main", "prompt": "build website", "name": "Website"},
+        )
+        assert resp.status == 401
+        data = await resp.json()
+        assert data["success"] is False
+        assert data["error"] == "Unauthorized"
 
 
 class TestTaskCreate:
