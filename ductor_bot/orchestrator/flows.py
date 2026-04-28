@@ -387,13 +387,7 @@ async def _recover_session(
 
 async def _kill_active_for_key(orch: Orchestrator, key: SessionKey) -> int:
     """Kill active CLI processes without crossing transport boundaries."""
-    if key.transport == "tg":
-        return await orch._process_registry.kill_all(key.chat_id)
-    return await orch._process_registry.kill_for_session(
-        key.chat_id,
-        transport=key.transport,
-        topic_id=key.topic_id,
-    )
+    return await orch.kill_processes_for_key(key)
 
 
 def _request_target(orch: Orchestrator, request: AgentRequest) -> tuple[str, str]:

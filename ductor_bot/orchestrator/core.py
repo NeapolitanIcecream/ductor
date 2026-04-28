@@ -482,6 +482,12 @@ class Orchestrator:
         """Kill active work for a transport-scoped session."""
         if key.transport == "tg":
             return await self.abort(key.chat_id)
+        return await self.kill_processes_for_key(key)
+
+    async def kill_processes_for_key(self, key: SessionKey) -> int:
+        """Kill active CLI processes without crossing transport boundaries."""
+        if key.transport == "tg":
+            return await self._process_registry.kill_all(key.chat_id)
         return await self._process_registry.kill_for_session(
             key.chat_id,
             transport=key.transport,

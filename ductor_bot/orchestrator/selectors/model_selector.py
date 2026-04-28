@@ -275,7 +275,7 @@ async def switch_model(  # noqa: C901
     )
 
     if not same_model:
-        await orch._process_registry.kill_all(key.chat_id)
+        await orch.kill_processes_for_key(key)
         if active_session is not None:
             await orch._sessions.sync_session_target(
                 active_session,

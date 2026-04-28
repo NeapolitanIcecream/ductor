@@ -300,6 +300,20 @@ async def test_switch_model_basic(orch: Orchestrator) -> None:
     mock_reset.assert_not_called()
 
 
+async def test_api_switch_model_kills_only_api_session(orch: Orchestrator) -> None:
+    mock_kill_all = AsyncMock(return_value=0)
+    mock_kill_for_session = AsyncMock(return_value=0)
+    object.__setattr__(orch._process_registry, "kill_all", mock_kill_all)
+    object.__setattr__(orch._process_registry, "kill_for_session", mock_kill_for_session)
+
+    result = await switch_model(orch, SessionKey(transport="api", chat_id=1, topic_id=7), "sonnet")
+
+    assert "opus" in result
+    assert "sonnet" in result
+    mock_kill_all.assert_not_awaited()
+    mock_kill_for_session.assert_awaited_once_with(1, transport="api", topic_id=7)
+
+
 async def test_switch_model_opus_1m_persists(orch: Orchestrator) -> None:
     """opus[1m] is a valid Claude alias; switch_model persists it to config (#76)."""
     object.__setattr__(orch._process_registry, "kill_all", AsyncMock(return_value=0))
